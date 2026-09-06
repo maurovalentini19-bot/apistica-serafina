@@ -66,7 +66,6 @@ def fetch_table(table_name, order_by_date=False):
         data = response.data
         if data:
             df = pd.DataFrame(data)
-            # Ordinamento di default in ordine di data decrescente se la tabella ha una colonna 'data'
             if order_by_date and 'data' in df.columns:
                 df['data_dt_sort'] = pd.to_datetime(df['data'], errors='coerce')
                 df = df.sort_values(by='data_dt_sort', ascending=False).drop(columns=['data_dt_sort'])
@@ -136,7 +135,7 @@ if scelta == "Dashboard":
     with tab2:
         st.subheader("Elenco Vendite (dal più recente)")
         if not df_vendite.empty:
-            df_disp = df_vendite.drop(columns=[col for col in ['id'] if col in df_vendite.columns]).copy()
+            df_disp = df_vendite.drop(columns=[col for col in ['id'] if col in df_vendite.columns]).copy() if 'id' in df_vendite.columns else df_vendite.copy()
             df_disp['totale'] = df_disp['totale'].apply(lambda x: f"€ {x:,.2f}" if pd.notnull(x) else "€ 0,00")
             st.dataframe(df_disp, use_container_width=True)
         else:
@@ -145,7 +144,7 @@ if scelta == "Dashboard":
     with tab3:
         st.subheader("Movimenti Prima Nota (dal più recente)")
         if not df_pn.empty:
-            df_disp = df_pn.drop(columns=[col for col in ['id', 'vendita_id'] if col in df_pn.columns]).copy()
+            df_disp = df_pn.drop(columns=[col for col in ['id', 'vendita_id'] if col in df_pn.columns]).copy() if 'id' in df_pn.columns else df_pn.copy()
             df_disp['importo'] = df_disp['importo'].apply(lambda x: f"€ {x:,.2f}" if pd.notnull(x) else "€ 0,00")
             st.dataframe(df_disp, use_container_width=True)
         else:
@@ -310,7 +309,7 @@ elif scelta == "Vendite":
     with tab_elenco:
         df = fetch_table("vendite", order_by_date=True)
         if not df.empty:
-            df_table = df.drop(columns=[col for col:: ['id'] if col in df.columns]).copy() if 'id' in df.columns else df.copy()
+            df_table = df.drop(columns=[col for col in ['id'] if col in df.columns]).copy() if 'id' in df.columns else df.copy()
             df_table['totale'] = df_table['totale'].apply(lambda x: f"€ {x:,.2f}")
             st.dataframe(df_table, use_container_width=True)
         else:
@@ -501,7 +500,6 @@ elif scelta == "Vendite":
                 st.info(f"📦 **Giacenza reale disponibile per '{articolo_scelto}':** {giacenza_disponibile} pz")
                 
                 with col_p:
-                    # Rimosso il key fisso per consentire il reset automatico al prezzo di anagrafica al cambio articolo
                     prezzo_unitario = st.number_input("Prezzo Unitario (€)", min_value=0.0, value=prezzo_default, step=0.10, format="%.2f")
                 
                 totale_calcolato = prezzo_unitario * quantita
@@ -593,7 +591,7 @@ elif scelta == "Prima Nota (Cassa)":
     with tab_mov:
         df = fetch_table("prima_nota", order_by_date=True)
         if not df.empty:
-            df_table = df.drop(columns=[col for col:: ['id', 'vendita_id'] if col in df.columns]).copy() if 'id' in df.columns else df.copy()
+            df_table = df.drop(columns=[col for col in ['id', 'vendita_id'] if col in df.columns]).copy() if 'id' in df.columns else df.copy()
             df_table['importo'] = df_table['importo'].apply(lambda x: f"€ {x:,.2f}")
             st.dataframe(df_table, use_container_width=True)
             
