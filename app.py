@@ -60,12 +60,17 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- FUNZIONI DI SUPPORTO SUPABASE ---
-def fetch_table(table_name):
+def fetch_table(table_name, order_by_date=False):
     try:
         response = supabase.table(table_name).select("*").execute()
         data = response.data
         if data:
-            return pd.DataFrame(data)
+            df = pd.DataFrame(data)
+            # Ordinamento di default in ordine di data decrescente se la tabella ha una colonna 'data'
+            if order_by_date and 'data' in df.columns:
+                df['data_dt_sort'] = pd.to_datetime(df['data'], errors='coerce')
+                df = df.sort_values(by='data_dt_sort', ascending=False).drop(columns=['data_dt_sort'])
+            return df
         else:
             return pd.DataFrame()
     except Exception as e:
@@ -88,7 +93,7 @@ scelta = st.sidebar.radio(
     ]
 )
 st.sidebar.markdown("---")
-st.sidebar.caption("Gestionale cloud v3.1 (Supabase)")
+st.sidebar.caption("Gestionale cloud v3.2 (Supabase)")
 
 # ==========================================
 # 1. DASHBOARD
@@ -97,9 +102,9 @@ if scelta == "Dashboard":
     st.title("Apistica Serafina")
     st.markdown("Panoramica generale sull'andamento dell'attività (Cloud in tempo reale).")
     
-    df_pn = fetch_table("prima_nota")
+    df_pn = fetch_table("prima_nota", order_by_date=True)
     df_prod = fetch_table("prodotti")
-    df_vendite = fetch_table("vendite")
+    df_vendite = fetch_table("vendite", order_by_date=True)
     
     incassi = df_pn[df_pn['tipo'] == 'Incasso']['importo'].sum() if not df_pn.empty and 'importo' in df_pn.columns else 0.0
     spese = df_pn[df_pn['tipo'] == 'Spesa']['importo'].sum() if not df_pn.empty and 'importo' in df_pn.columns else 0.0
@@ -129,7 +134,7 @@ if scelta == "Dashboard":
             st.info("Nessun prodotto disponibile.")
             
     with tab2:
-        st.subheader("Elenco Vendite")
+        st.subheader("Elenco Vendite (dal più recente)")
         if not df_vendite.empty:
             df_disp = df_vendite.drop(columns=[col for col in ['id'] if col in df_vendite.columns]).copy()
             df_disp['totale'] = df_disp['totale'].apply(lambda x: f"€ {x:,.2f}" if pd.notnull(x) else "€ 0,00")
@@ -138,7 +143,7 @@ if scelta == "Dashboard":
             st.info("Nessuna vendita registrata.")
             
     with tab3:
-        st.subheader("Movimenti Prima Nota")
+        st.subheader("Movimenti Prima Nota (dal più recente)")
         if not df_pn.empty:
             df_disp = df_pn.drop(columns=[col for col in ['id', 'vendita_id'] if col in df_pn.columns]).copy()
             df_disp['importo'] = df_disp['importo'].apply(lambda x: f"€ {x:,.2f}" if pd.notnull(x) else "€ 0,00")
@@ -164,7 +169,7 @@ elif scelta == "Report & Analisi":
         with col_f2:
             data_fine_v = st.date_input("Data Fine (Vendite)", datetime.today(), key="rep_v_2")
             
-        df_v_all = fetch_table("vendite")
+        df_v_all = fetch_table("vendite", order_by_date=True)
         if not df_v_all.empty and 'data' in df_v_all.columns:
             df_v_all['data_dt'] = pd.to_datetime(df_v_all['data']).dt.date
             df_v = df_v_all[
@@ -245,7 +250,7 @@ elif scelta == "Report & Analisi":
         with col_c2:
             data_fine_pn = st.date_input("Data Fine (Cassa)", datetime.today(), key="rep_c_2")
             
-        df_pn_all = fetch_table("prima_nota")
+        df_pn_all = fetch_table("prima_nota", order_by_date=True)
         if not df_pn_all.empty and 'data' in df_pn_all.columns:
             df_pn_all['data_dt'] = pd.to_datetime(df_pn_all['data']).dt.date
             df_pn_f = df_pn_all[(df_pn_all['data_dt'] >= data_inizio_pn) & (df_pn_all['data_dt'] <= data_fine_pn)]
@@ -303,9 +308,9 @@ elif scelta == "Vendite":
     tab_inserimento, tab_modifica, tab_elenco = st.tabs(["Nuova Vendita", "Modifica / Elimina Vendita", "Elenco Vendite"])
     
     with tab_elenco:
-        df = fetch_table("vendite")
+        df = fetch_table("vendite", order_by_date=True)
         if not df.empty:
-            df_table = df.drop(columns=[col for col in ['id'] if col in df.columns]).copy()
+            df_table = df.drop(columns=[col for col:: ['id'] if col in df.columns]).copy() if 'id' in df.columns else df.copy()
             df_table['totale'] = df_table['totale'].apply(lambda x: f"€ {x:,.2f}")
             st.dataframe(df_table, use_container_width=True)
         else:
@@ -313,7 +318,7 @@ elif scelta == "Vendite":
             
     with tab_modifica:
         st.subheader("✏️ Modifica o Annulla Vendita Esistente")
-        df_vendite_mod = fetch_table("vendite")
+        df_vendite_mod = fetch_table("vendite", order_by_date=True)
         df_prodotti_all = fetch_table("prodotti")
         
         if not df_vendite_mod.empty:
@@ -348,7 +353,6 @@ elif scelta == "Vendite":
                 idx_prod = lista_prod_edit.index(art_attuale) if art_attuale in lista_prod_edit else 0
                 m_articolo = st.selectbox("Articolo", options=lista_prod_edit, index=idx_prod)
                 
-                # Mostriamo la giacenza reale dell'articolo selezionato in modifica
                 if not df_prodotti_all.empty and m_articolo:
                     p_info_mod = df_prodotti_all[df_prodotti_all['descrizione'] == m_articolo]
                     if not p_info_mod.empty:
@@ -375,9 +379,6 @@ elif scelta == "Vendite":
                     vecchio_articolo = r_vend_sel['articolo']
                     vecchio_tipo = r_vend_sel['tipo']
                     
-                    # CORRETTO GESTIONE MAGAZZINAGGIO SU MODIFICA:
-                    # Se l'articolo non è cambiato, calcoliamo la differenza esatta (delta).
-                    # Se l'articolo è cambiato, ripristiniamo completamente il vecchio articolo e scarichiamo il nuovo.
                     if vecchio_articolo == m_articolo:
                         if not df_prodotti_all.empty:
                             prod_curr = df_prodotti_all[df_prodotti_all['descrizione'] == m_articolo]
@@ -385,16 +386,13 @@ elif scelta == "Vendite":
                                 p_id_c = int(prod_curr.iloc[0]['id'])
                                 giac_c = int(prod_curr.iloc[0]['giacenza'])
                                 
-                                # Calcolo effetto netto sulla giacenza
                                 if vecchio_tipo == "Vendita" and m_tipo_op == "Vendita":
-                                    # Es. Vecchia qta 2, Nuova qta 5 -> diff 3 in meno in magazzino
                                     differenza = m_quantita - vecchia_qta
                                     nuova_giac = giac_c - differenza
                                 elif vecchio_tipo == "Reso" and m_tipo_op == "Reso":
                                     differenza = m_quantita - vecchia_qta
                                     nuova_giac = giac_c + differenza
                                 else:
-                                    # Se è cambiato da Vendita a Reso o viceversa
                                     if m_tipo_op == "Vendita":
                                         nuova_giac = giac_c - m_quantita + vecchia_qta
                                     else:
@@ -405,7 +403,6 @@ elif scelta == "Vendite":
                                 else:
                                     supabase.table("prodotti").update({"giacenza": nuova_giac}).eq("id", p_id_c).execute()
                     else:
-                        # 1. Ripristina vecchio articolo
                         if vecchio_articolo and not df_prodotti_all.empty:
                             p_old = df_prodotti_all[df_prodotti_all['descrizione'] == vecchio_articolo]
                             if not p_old.empty:
@@ -414,7 +411,6 @@ elif scelta == "Vendite":
                                 ripr_giac = giac_o + vecchia_qta if vecchio_tipo == "Vendita" else giac_o - vecchia_qta
                                 supabase.table("prodotti").update({"giacenza": ripr_giac}).eq("id", id_p_o)
                         
-                        # 2. Scarica nuovo articolo
                         if m_articolo and not df_prodotti_all.empty:
                             p_new = df_prodotti_all[df_prodotti_all['descrizione'] == m_articolo]
                             if not p_new.empty:
@@ -430,7 +426,6 @@ elif scelta == "Vendite":
                         "totale": nuovo_totale, "articolo": m_articolo, "quantita": m_quantita
                     }).eq("id", v_id_edit).execute()
                     
-                    # Aggiorna prima nota collegata
                     supabase.table("prima_nota").delete().eq("vendita_id", v_id_edit).execute()
                     cat_pn = "Vendite" if m_tipo_op == "Vendita" else "Resi"
                     desc_pn = f"{m_tipo_op} - {m_cliente} - {m_articolo} (x{m_quantita})"
@@ -503,11 +498,11 @@ elif scelta == "Vendite":
                 prezzo_default = float(prod_info['prezzo_vendita'])
                 giacenza_disponibile = int(prod_info['giacenza'])
                 
-                # MOSTRIAMO LA GIACENZA REALE IN TEMPO REALE ALLA SELEZIONE DELL'ARTICOLO
                 st.info(f"📦 **Giacenza reale disponibile per '{articolo_scelto}':** {giacenza_disponibile} pz")
                 
                 with col_p:
-                    prezzo_unitario = st.number_input("Prezzo Unitario (€)", min_value=0.0, value=prezzo_default, step=0.10, format="%.2f", key="v_prezzo_mod")
+                    # Rimosso il key fisso per consentire il reset automatico al prezzo di anagrafica al cambio articolo
+                    prezzo_unitario = st.number_input("Prezzo Unitario (€)", min_value=0.0, value=prezzo_default, step=0.10, format="%.2f")
                 
                 totale_calcolato = prezzo_unitario * quantita
                 st.markdown(f"### 💶 Totale Complessivo: **€ {totale_calcolato:,.2f}**")
@@ -518,7 +513,7 @@ elif scelta == "Vendite":
             cli_val = st.session_state.get("v_cliente") if lista_clienti else st.session_state.get("v_cliente_txt")
             art_val = st.session_state.get("v_prodotto")
             qta_val = st.session_state.get("v_qta", 1)
-            prezzo_finale_unitario = st.session_state.get("v_prezzo_mod", 0.0)
+            prezzo_finale_unitario = prezzo_unitario if 'prezzo_unitario' in locals() else 0.0
             totale_finale = prezzo_finale_unitario * qta_val
             
             if not cli_val or not art_val:
@@ -531,13 +526,11 @@ elif scelta == "Vendite":
                 if tipo == "Vendita" and qta_val > giacenza_attuale:
                     st.error(f"⚠️ Quantità richiesta ({qta_val}) superiore alla giacenza ({giacenza_attuale} pz)!")
                 else:
-                    # Inserimento vendita
                     res_ins = supabase.table("vendite").insert({
                         "data": str(data), "tipo": tipo, "cliente": cli_val,
                         "totale": totale_finale, "stato": "Pagata", "articolo": art_val, "quantita": int(qta_val)
                     }).execute()
                     
-                    # Recupera ID inserito
                     id_vendita_creata = res_ins.data[0]['id'] if res_ins.data else None
                     
                     nuova_giacenza = giacenza_attuale - int(qta_val) if tipo == "Vendita" else giacenza_attuale + int(qta_val)
@@ -598,9 +591,9 @@ elif scelta == "Prima Nota (Cassa)":
     tab_mov, tab_reg = st.tabs(["Elenco Movimenti", "Registra Movimento"])
     
     with tab_mov:
-        df = fetch_table("prima_nota")
+        df = fetch_table("prima_nota", order_by_date=True)
         if not df.empty:
-            df_table = df.drop(columns=[col for col in ['id', 'vendita_id'] if col in df.columns]).copy()
+            df_table = df.drop(columns=[col for col:: ['id', 'vendita_id'] if col in df.columns]).copy() if 'id' in df.columns else df.copy()
             df_table['importo'] = df_table['importo'].apply(lambda x: f"€ {x:,.2f}")
             st.dataframe(df_table, use_container_width=True)
             
@@ -764,13 +757,13 @@ elif scelta == "Contatti (Clienti/Fornitori)":
             st.info("Nessun contatto.")
             
     with tab_estratto:
-        st.subheader("🔍 Storico Cliente")
+        st.subheader("🔍 Storico Cliente (dal più recente)")
         df_contatti = fetch_table("contatti")
         lista_clienti_estratto = df_contatti[df_contatti['tipo'].isin(['Cliente', 'Clienti'])]['nome'].tolist() if not df_contatti.empty and 'tipo' in df_contatti.columns else []
         
         if lista_clienti_estratto:
             cliente_selezionato = st.selectbox("Seleziona Cliente", options=lista_clienti_estratto)
-            df_vendite_all = fetch_table("vendite")
+            df_vendite_all = fetch_table("vendite", order_by_date=True)
             if not df_vendite_all.empty and 'cliente' in df_vendite_all.columns:
                 df_storico = df_vendite_all[(df_vendite_all['cliente'] == cliente_selezionato) & (df_vendite_all['stato'] != 'Annullata')]
                 if not df_storico.empty:
