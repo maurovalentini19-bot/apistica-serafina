@@ -166,7 +166,6 @@ elif scelta == "Report & Analisi":
             
         df_v_all = fetch_table("vendite")
         if not df_v_all.empty and 'data' in df_v_all.columns:
-            # Filtro via Pandas per massima compatibilità con Supabase
             df_v_all['data_dt'] = pd.to_datetime(df_v_all['data']).dt.date
             df_v = df_v_all[
                 (df_v_all['stato'] != 'Annullata') & 
@@ -315,6 +314,8 @@ elif scelta == "Vendite":
     with tab_modifica:
         st.subheader("✏️ Modifica o Annulla Vendita Esistente")
         df_vendite_mod = fetch_table("vendite")
+        df_prodotti_all = fetch_table("prodotti")
+        
         if not df_vendite_mod.empty:
             df_vendite_mod['etichetta_scelta'] = df_vendite_mod.apply(lambda r: f"ID:{r['id']} | Data: {r['data']} | Cliente: {r['cliente']} | Articolo: {r['articolo']} (Qt: {r['quantita']}) - Tot: € {r['totale']:,.2f}", axis=1)
             
@@ -341,13 +342,19 @@ elif scelta == "Vendite":
                     idx_cli = 0
                 m_cliente = st.selectbox("Cliente", options=lista_clienti_edit if lista_clienti_edit else [r_vend_sel['cliente']], index=idx_cli)
                 
-                df_prodotti_all = fetch_table("prodotti")
                 lista_prod_edit = df_prodotti_all['descrizione'].tolist() if not df_prodotti_all.empty else []
                 
                 art_attuale = r_vend_sel['articolo']
                 idx_prod = lista_prod_edit.index(art_attuale) if art_attuale in lista_prod_edit else 0
                 m_articolo = st.selectbox("Articolo", options=lista_prod_edit, index=idx_prod)
                 
+                # Mostriamo la giacenza reale dell'articolo selezionato in modifica
+                if not df_prodotti_all.empty and m_articolo:
+                    p_info_mod = df_prodotti_all[df_prodotti_all['descrizione'] == m_articolo]
+                    if not p_info_mod.empty:
+                        giac_reale_edit = int(p_info_mod.iloc[0]['giacenza'])
+                        st.info(f"📦 **Giacenza reale disponibile per '{m_articolo}':** {giac_reale_edit} pz")
+
                 ec_q, ec_p = st.columns(2)
                 with ec_q:
                     m_quantita = st.number_input("Quantità", min_value=1, value=int(r_vend_sel['quantita']), step=1)
@@ -368,23 +375,54 @@ elif scelta == "Vendite":
                     vecchio_articolo = r_vend_sel['articolo']
                     vecchio_tipo = r_vend_sel['tipo']
                     
-                    # Ripristino giacenza vecchia
-                    if vecchio_articolo and not df_prodotti_all.empty:
-                        prod_old = df_prodotti_all[df_prodotti_all['descrizione'] == vecchio_articolo]
-                        if not prod_old.empty:
-                            id_p_v = int(prod_old.iloc[0]['id'])
-                            giac_v = int(prod_old.iloc[0]['giacenza'])
-                            ripr_giac = giac_v + vecchia_qta if vecchio_tipo == "Vendita" else giac_v - vecchia_qta
-                            supabase.table("prodotti").update({"giacenza": ripr_giac}).eq("id", id_p_v).execute()
-                    
-                    # Sottrazione nuova giacenza
-                    prod_new = df_prodotti_all[df_prodotti_all['descrizione'] == m_articolo]
-                    if not prod_new.empty:
-                        id_p_n = int(prod_new.iloc[0]['id'])
-                        giac_n = int(prod_new.iloc[0]['giacenza'])
-                        nuova_giac = giac_n - m_quantita if m_tipo_op == "Vendita" else giac_n + m_quantita
-                        supabase.table("prodotti").update({"giacenza": nuova_giac}).eq("id", id_p_n).execute()
-                    
+                    # CORRETTO GESTIONE MAGAZZINAGGIO SU MODIFICA:
+                    # Se l'articolo non è cambiato, calcoliamo la differenza esatta (delta).
+                    # Se l'articolo è cambiato, ripristiniamo completamente il vecchio articolo e scarichiamo il nuovo.
+                    if vecchio_articolo == m_articolo:
+                        if not df_prodotti_all.empty:
+                            prod_curr = df_prodotti_all[df_prodotti_all['descrizione'] == m_articolo]
+                            if not prod_curr.empty:
+                                p_id_c = int(prod_curr.iloc[0]['id'])
+                                giac_c = int(prod_curr.iloc[0]['giacenza'])
+                                
+                                # Calcolo effetto netto sulla giacenza
+                                if vecchio_tipo == "Vendita" and m_tipo_op == "Vendita":
+                                    # Es. Vecchia qta 2, Nuova qta 5 -> diff 3 in meno in magazzino
+                                    differenza = m_quantita - vecchia_qta
+                                    nuova_giac = giac_c - differenza
+                                elif vecchio_tipo == "Reso" and m_tipo_op == "Reso":
+                                    differenza = m_quantita - vecchia_qta
+                                    nuova_giac = giac_c + differenza
+                                else:
+                                    # Se è cambiato da Vendita a Reso o viceversa
+                                    if m_tipo_op == "Vendita":
+                                        nuova_giac = giac_c - m_quantita + vecchia_qta
+                                    else:
+                                        nuova_giac = giac_c + m_quantita - vecchia_qta
+                                        
+                                if m_tipo_op == "Vendita" and nuova_giac < 0:
+                                    st.error("⚠️ Quantità richiesta superiore alla giacenza disponibile!")
+                                else:
+                                    supabase.table("prodotti").update({"giacenza": nuova_giac}).eq("id", p_id_c).execute()
+                    else:
+                        # 1. Ripristina vecchio articolo
+                        if vecchio_articolo and not df_prodotti_all.empty:
+                            p_old = df_prodotti_all[df_prodotti_all['descrizione'] == vecchio_articolo]
+                            if not p_old.empty:
+                                id_p_o = int(p_old.iloc[0]['id'])
+                                giac_o = int(p_old.iloc[0]['giacenza'])
+                                ripr_giac = giac_o + vecchia_qta if vecchio_tipo == "Vendita" else giac_o - vecchia_qta
+                                supabase.table("prodotti").update({"giacenza": ripr_giac}).eq("id", id_p_o)
+                        
+                        # 2. Scarica nuovo articolo
+                        if m_articolo and not df_prodotti_all.empty:
+                            p_new = df_prodotti_all[df_prodotti_all['descrizione'] == m_articolo]
+                            if not p_new.empty:
+                                id_p_n = int(p_new.iloc[0]['id'])
+                                giac_n = int(p_new.iloc[0]['giacenza'])
+                                nuova_giac = giac_n - m_quantita if m_tipo_op == "Vendita" else giac_n + m_quantita
+                                supabase.table("prodotti").update({"giacenza": nuova_giac}).eq("id", id_p_n).execute()
+
                     nuovo_totale = m_prezzo_unitario * m_quantita
                     
                     supabase.table("vendite").update({
@@ -464,6 +502,9 @@ elif scelta == "Vendite":
                 prod_info = df_prodotti[df_prodotti['descrizione'] == articolo_scelto].iloc[0]
                 prezzo_default = float(prod_info['prezzo_vendita'])
                 giacenza_disponibile = int(prod_info['giacenza'])
+                
+                # MOSTRIAMO LA GIACENZA REALE IN TEMPO REALE ALLA SELEZIONE DELL'ARTICOLO
+                st.info(f"📦 **Giacenza reale disponibile per '{articolo_scelto}':** {giacenza_disponibile} pz")
                 
                 with col_p:
                     prezzo_unitario = st.number_input("Prezzo Unitario (€)", min_value=0.0, value=prezzo_default, step=0.10, format="%.2f", key="v_prezzo_mod")
