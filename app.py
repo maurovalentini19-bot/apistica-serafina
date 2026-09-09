@@ -193,7 +193,7 @@ elif scelta == "Report & Analisi":
             mk2.metric("📦 Quantità Totale Venduta", f"{int(tot_qta_sel)} pz")
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # --- SEZIONE: DETTAGLIO VENDITE PER SINGOLO PRODOTTO (CON TOTALI) ---
+            # --- SEZIONE: DETTAGLIO VENDITE PER SINGOLO PRODOTTO ---
             st.markdown("### 🔍 Dettaglio Vendite per Singolo Prodotto")
             lista_articoli_rep = df_agg['articolo'].tolist()
             prodotto_selezionato_rep = st.selectbox("Seleziona un prodotto per vedere l'elenco di tutte le vendite", options=lista_articoli_rep, key="sel_prod_rep_dettaglio")
@@ -203,9 +203,10 @@ elif scelta == "Report & Analisi":
                 if not df_storico_prod.empty:
                     tot_qta_prod = df_storico_prod['quantita'].sum()
                     tot_imp_prod = df_storico_prod['totale'].sum()
+                    prezzo_medio_prod = tot_imp_prod / tot_qta_prod if tot_qta_prod > 0 else 0.0
                     
                     riga_tot_prod = pd.DataFrame({
-                        'cliente': ['--- TOTALE ---'],
+                        'cliente': ['--- TOTALE / MEDIA ---'],
                         'articolo': [''],
                         'quantita': [int(tot_qta_prod)],
                         'totale': [tot_imp_prod],
@@ -222,7 +223,7 @@ elif scelta == "Report & Analisi":
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # --- SEZIONE: DETTAGLIO ACQUISTI PER SINGOLO CLIENTE (CON TOTALI) ---
+            # --- SEZIONE: DETTAGLIO ACQUISTI PER SINGOLO CLIENTE ---
             st.markdown("### 👥 Dettaglio Acquisti per Singolo Cliente")
             df_clienti_attivi = df_v[df_v['cliente'].notnull()]['cliente'].unique().tolist()
             if df_clienti_attivi:
@@ -232,8 +233,9 @@ elif scelta == "Report & Analisi":
                     if not df_storico_cli.empty:
                         tot_qta_cli = df_storico_cli['quantita'].sum()
                         tot_imp_cli = df_storico_cli['totale'].sum()
+                        prezzo_medio_cli = tot_imp_cli / tot_qta_cli if tot_qta_cli > 0 else 0.0
                         
-                        st.info(f"💡 Spesa complessiva di **{cliente_selezionato_rep}** nel periodo: **€ {tot_imp_cli:,.2f}** ({int(tot_qta_cli)} pz)")
+                        st.info(f"💡 Spesa complessiva di **{cliente_selezionato_rep}** nel periodo: **€ {tot_imp_cli:,.2f}** ({int(tot_qta_cli)} pz - Prezzo medio unitario: **€ {prezzo_medio_cli:,.2f}**)")
                         
                         riga_tot_cli_dett = pd.DataFrame({
                             'cliente': ['--- TOTALE ---'],
@@ -255,26 +257,30 @@ elif scelta == "Report & Analisi":
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # --- SEZIONE: REPORT CLIENTE - FATTURATO COMPLESSIVO (CON TOTALI) ---
-            st.markdown("### 👥 Report: Cliente – Fatturato")
+            # --- SEZIONE: REPORT CLIENTE - FATTURATO COMPLESSIVO (CON PREZZO MEDIO) ---
+            st.markdown("### 👥 Report: Cliente – Fatturato e Prezzo Medio")
             df_cli_agg = df_v.groupby('cliente').agg({'totale': 'sum', 'quantita': 'sum'}).reset_index()
             df_cli_agg.columns = ['cliente', 'fatturato_cliente', 'qta_totale_cliente']
+            df_cli_agg['prezzo_medio_cliente'] = df_cli_agg['fatturato_cliente'] / df_cli_agg['qta_totale_cliente']
             df_cli_agg = df_cli_agg.sort_values(by='fatturato_cliente', ascending=False)
             
             if not df_cli_agg.empty:
                 tot_fatt_cli = df_cli_agg['fatturato_cliente'].sum()
                 tot_qta_cli_tot = df_cli_agg['qta_totale_cliente'].sum()
+                prezzo_medio_tot_cli = tot_fatt_cli / tot_qta_cli_tot if tot_qta_cli_tot > 0 else 0.0
                 
                 riga_tot_cli = pd.DataFrame({
-                    'cliente': ['--- TOTALE COMPLESSIVO ---'],
+                    'cliente': ['--- TOTALE / MEDIA ---'],
                     'fatturato_cliente': [tot_fatt_cli],
-                    'qta_totale_cliente': [int(tot_qta_cli_tot)]
+                    'qta_totale_cliente': [int(tot_qta_cli_tot)],
+                    'prezzo_medio_cliente': [prezzo_medio_tot_cli]
                 })
                 df_cli_rep_full = pd.concat([df_cli_agg, riga_tot_cli], ignore_index=True)
                 df_cli_rep_full['fatturato_cliente_fmt'] = df_cli_rep_full['fatturato_cliente'].apply(lambda x: f"€ {x:,.2f}")
+                df_cli_rep_full['prezzo_medio_fmt'] = df_cli_rep_full['prezzo_medio_cliente'].apply(lambda x: f"€ {x:,.2f}")
                 
-                df_cli_show = df_cli_rep_full[['cliente', 'qta_totale_cliente', 'fatturato_cliente_fmt']].copy()
-                df_cli_show.columns = ['Cliente', 'Pezzi Acquistati Totali', 'Fatturato']
+                df_cli_show = df_cli_rep_full[['cliente', 'qta_totale_cliente', 'prezzo_medio_fmt', 'fatturato_cliente_fmt']].copy()
+                df_cli_show.columns = ['Cliente', 'Pezzi Acquistati Totali', 'Prezzo Medio Unitario', 'Fatturato']
                 st.dataframe(df_cli_show, use_container_width=True)
 
             st.markdown("<br>", unsafe_allow_html=True)
@@ -333,7 +339,6 @@ elif scelta == "Report & Analisi":
             df_pn_rep = df_pn_f.groupby(['tipo', 'categoria'])['importo'].sum().reset_index()
             df_pn_rep.columns = ['tipo', 'categoria', 'totale_importo']
             
-            # Riga totale per la cassa
             tot_imp_cassa = df_pn_rep['totale_importo'].sum()
             riga_tot_cassa = pd.DataFrame({
                 'tipo': ['--- TOTALE ---'],
@@ -364,7 +369,6 @@ elif scelta == "Report & Analisi":
             
             st.markdown("<br>", unsafe_allow_html=True)
             
-            # Riga totale magazzino
             riga_tot_mag = pd.DataFrame({
                 'id': [0],
                 'codice': ['--- TOTALE ---'],
