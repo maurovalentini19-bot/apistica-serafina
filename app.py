@@ -193,7 +193,7 @@ elif scelta == "Report & Analisi":
             mk2.metric("📦 Quantità Totale Venduta", f"{int(tot_qta_sel)} pz")
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # --- SEZIONE: DETTAGLIO VENDITE PER SINGOLO PRODOTTO ---
+            # --- SEZIONE: DETTAGLIO VENDITE PER SINGOLO PRODOTTO (CON TOTALI) ---
             st.markdown("### 🔍 Dettaglio Vendite per Singolo Prodotto")
             lista_articoli_rep = df_agg['articolo'].tolist()
             prodotto_selezionato_rep = st.selectbox("Seleziona un prodotto per vedere l'elenco di tutte le vendite", options=lista_articoli_rep, key="sel_prod_rep_dettaglio")
@@ -201,7 +201,20 @@ elif scelta == "Report & Analisi":
             if prodotto_selezionato_rep:
                 df_storico_prod = df_v[df_v['articolo'] == prodotto_selezionato_rep].copy()
                 if not df_storico_prod.empty:
-                    df_storico_prod_show = df_storico_prod.drop(columns=[col for col in ['id', 'vendita_id', 'data_dt'] if col in df_storico_prod.columns])
+                    tot_qta_prod = df_storico_prod['quantita'].sum()
+                    tot_imp_prod = df_storico_prod['totale'].sum()
+                    
+                    riga_tot_prod = pd.DataFrame({
+                        'cliente': ['--- TOTALE ---'],
+                        'articolo': [''],
+                        'quantita': [int(tot_qta_prod)],
+                        'totale': [tot_imp_prod],
+                        'stato': [''],
+                        'tipo': ['']
+                    }, index=[0])
+                    
+                    df_storico_prod_full = pd.concat([df_storico_prod, riga_tot_prod], ignore_index=True)
+                    df_storico_prod_show = df_storico_prod_full.drop(columns=[col for col in ['id', 'vendita_id', 'data_dt'] if col in df_storico_prod_full.columns])
                     df_storico_prod_show['totale'] = df_storico_prod_show['totale'].apply(lambda x: f"€ {x:,.2f}" if pd.notnull(x) else "€ 0,00")
                     st.dataframe(df_storico_prod_show, use_container_width=True)
                 else:
@@ -209,7 +222,7 @@ elif scelta == "Report & Analisi":
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # --- SEZIONE: DETTAGLIO ACQUISTI PER SINGOLO CLIENTE ---
+            # --- SEZIONE: DETTAGLIO ACQUISTI PER SINGOLO CLIENTE (CON TOTALI) ---
             st.markdown("### 👥 Dettaglio Acquisti per Singolo Cliente")
             df_clienti_attivi = df_v[df_v['cliente'].notnull()]['cliente'].unique().tolist()
             if df_clienti_attivi:
@@ -217,15 +230,52 @@ elif scelta == "Report & Analisi":
                 if cliente_selezionato_rep:
                     df_storico_cli = df_v[df_v['cliente'] == cliente_selezionato_rep].copy()
                     if not df_storico_cli.empty:
-                        tot_speso_cli = df_storico_cli['totale'].sum()
-                        st.info(f"💡 Spesa complessiva di **{cliente_selezionato_rep}** nel periodo: **€ {tot_speso_cli:,.2f}**")
-                        df_storico_cli_show = df_storico_cli.drop(columns=[col for col in ['id', 'vendita_id', 'data_dt'] if col in df_storico_cli.columns])
+                        tot_qta_cli = df_storico_cli['quantita'].sum()
+                        tot_imp_cli = df_storico_cli['totale'].sum()
+                        
+                        st.info(f"💡 Spesa complessiva di **{cliente_selezionato_rep}** nel periodo: **€ {tot_imp_cli:,.2f}** ({int(tot_qta_cli)} pz)")
+                        
+                        riga_tot_cli_dett = pd.DataFrame({
+                            'cliente': ['--- TOTALE ---'],
+                            'articolo': [''],
+                            'quantita': [int(tot_qta_cli)],
+                            'totale': [tot_imp_cli],
+                            'stato': [''],
+                            'tipo': ['']
+                        }, index=[0])
+                        
+                        df_storico_cli_full = pd.concat([df_storico_cli, riga_tot_cli_dett], ignore_index=True)
+                        df_storico_cli_show = df_storico_cli_full.drop(columns=[col for col in ['id', 'vendita_id', 'data_dt'] if col in df_storico_cli_full.columns])
                         df_storico_cli_show['totale'] = df_storico_cli_show['totale'].apply(lambda x: f"€ {x:,.2f}" if pd.notnull(x) else "€ 0,00")
                         st.dataframe(df_storico_cli_show, use_container_width=True)
                     else:
                         st.info("Nessun acquisto registrato per questo cliente nel periodo.")
             else:
                 st.info("Nessun cliente registrato nelle vendite del periodo.")
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # --- SEZIONE: REPORT CLIENTE - FATTURATO COMPLESSIVO (CON TOTALI) ---
+            st.markdown("### 👥 Report: Cliente – Fatturato")
+            df_cli_agg = df_v.groupby('cliente').agg({'totale': 'sum', 'quantita': 'sum'}).reset_index()
+            df_cli_agg.columns = ['cliente', 'fatturato_cliente', 'qta_totale_cliente']
+            df_cli_agg = df_cli_agg.sort_values(by='fatturato_cliente', ascending=False)
+            
+            if not df_cli_agg.empty:
+                tot_fatt_cli = df_cli_agg['fatturato_cliente'].sum()
+                tot_qta_cli_tot = df_cli_agg['qta_totale_cliente'].sum()
+                
+                riga_tot_cli = pd.DataFrame({
+                    'cliente': ['--- TOTALE COMPLESSIVO ---'],
+                    'fatturato_cliente': [tot_fatt_cli],
+                    'qta_totale_cliente': [int(tot_qta_cli_tot)]
+                })
+                df_cli_rep_full = pd.concat([df_cli_agg, riga_tot_cli], ignore_index=True)
+                df_cli_rep_full['fatturato_cliente_fmt'] = df_cli_rep_full['fatturato_cliente'].apply(lambda x: f"€ {x:,.2f}")
+                
+                df_cli_show = df_cli_rep_full[['cliente', 'qta_totale_cliente', 'fatturato_cliente_fmt']].copy()
+                df_cli_show.columns = ['Cliente', 'Pezzi Acquistati Totali', 'Fatturato']
+                st.dataframe(df_cli_show, use_container_width=True)
 
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("### 📋 Tabella Riepilogativa per Articolo")
@@ -282,7 +332,16 @@ elif scelta == "Report & Analisi":
             st.markdown("<br>", unsafe_allow_html=True)
             df_pn_rep = df_pn_f.groupby(['tipo', 'categoria'])['importo'].sum().reset_index()
             df_pn_rep.columns = ['tipo', 'categoria', 'totale_importo']
-            df_pn_rep_display = df_pn_rep.copy()
+            
+            # Riga totale per la cassa
+            tot_imp_cassa = df_pn_rep['totale_importo'].sum()
+            riga_tot_cassa = pd.DataFrame({
+                'tipo': ['--- TOTALE ---'],
+                'categoria': ['---'],
+                'totale_importo': [tot_imp_cassa]
+            })
+            df_pn_rep_full = pd.concat([df_pn_rep, riga_tot_cassa], ignore_index=True)
+            df_pn_rep_display = df_pn_rep_full.copy()
             df_pn_rep_display['totale_importo'] = df_pn_rep_display['totale_importo'].apply(lambda x: f"€ {x:,.2f}")
             st.dataframe(df_pn_rep_display, use_container_width=True)
         else:
@@ -297,18 +356,35 @@ elif scelta == "Report & Analisi":
             
             tot_acq = df_pm['Valore d\'Acquisto Totale'].sum()
             tot_vend = df_pm['Valore di Vendita Potenziale'].sum()
+            tot_giacenza_mag = df_pm['giacenza'].sum()
             
             col_m1, col_m2 = st.columns(2)
             col_m1.metric("📦 Valore Totale Acquisto/Produzione", f"€ {tot_acq:,.2f}")
             col_m2.metric("💰 Valore Potenziale di Vendita", f"€ {tot_vend:,.2f}")
             
             st.markdown("<br>", unsafe_allow_html=True)
-            df_pm_disp = df_pm.copy()
-            df_pm_disp['prezzo_acquisto'] = df_pm_disp['prezzo_acquisto'].apply(lambda x: f"€ {x:,.2f}")
-            df_pm_disp['prezzo_vendita'] = df_pm_disp['prezzo_vendita'].apply(lambda x: f"€ {x:,.2f}")
+            
+            # Riga totale magazzino
+            riga_tot_mag = pd.DataFrame({
+                'id': [0],
+                'codice': ['--- TOTALE ---'],
+                'descrizione': ['---'],
+                'prezzo_acquisto': [0.0],
+                'prezzo_vendita': [0.0],
+                'giacenza': [int(tot_giacenza_mag)],
+                'Valore d\'Acquisto Totale': [tot_acq],
+                'Valore di Vendita Potenziale': [tot_vend]
+            })
+            df_pm_full = pd.concat([df_pm, riga_tot_mag], ignore_index=True)
+            
+            df_pm_disp = df_pm_full.copy()
+            df_pm_disp['prezzo_acquisto'] = df_pm_disp['prezzo_acquisto'].apply(lambda x: f"€ {x:,.2f}" if x > 0 else "-")
+            df_pm_disp['prezzo_vendita'] = df_pm_disp['prezzo_vendita'].apply(lambda x: f"€ {x:,.2f}" if x > 0 else "-")
             df_pm_disp['Valore d\'Acquisto Totale'] = df_pm_disp['Valore d\'Acquisto Totale'].apply(lambda x: f"€ {x:,.2f}")
             df_pm_disp['Valore di Vendita Potenziale'] = df_pm_disp['Valore di Vendita Potenziale'].apply(lambda x: f"€ {x:,.2f}")
-            st.dataframe(df_pm_disp, use_container_width=True)
+            
+            cols_show_mag = [c for c in ['codice', 'descrizione', 'prezzo_acquisto', 'prezzo_vendita', 'giacenza', 'Valore d\'Acquisto Totale', 'Valore di Vendita Potenziale'] if c in df_pm_disp.columns]
+            st.dataframe(df_pm_disp[cols_show_mag], use_container_width=True)
         else:
             st.info("Magazzino vuoto.")
             
