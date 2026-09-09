@@ -205,18 +205,24 @@ elif scelta == "Report & Analisi":
                     tot_imp_prod = df_storico_prod['totale'].sum()
                     prezzo_medio_prod = tot_imp_prod / tot_qta_prod if tot_qta_prod > 0 else 0.0
                     
-                    riga_tot_prod = pd.DataFrame({
+                    dict_tot_prod = {
                         'cliente': ['--- TOTALE / MEDIA ---'],
                         'articolo': [''],
                         'quantita': [int(tot_qta_prod)],
                         'totale': [tot_imp_prod],
                         'stato': [''],
                         'tipo': ['']
-                    }, index=[0])
+                    }
+                    if 'prezzo_unitario' in df_storico_prod.columns:
+                        dict_tot_prod['prezzo_unitario'] = [prezzo_medio_prod]
+                        
+                    riga_tot_prod = pd.DataFrame(dict_tot_prod, index=[0])
                     
                     df_storico_prod_full = pd.concat([df_storico_prod, riga_tot_prod], ignore_index=True)
                     df_storico_prod_show = df_storico_prod_full.drop(columns=[col for col in ['id', 'vendita_id', 'data_dt'] if col in df_storico_prod_full.columns])
                     df_storico_prod_show['totale'] = df_storico_prod_show['totale'].apply(lambda x: f"€ {x:,.2f}" if pd.notnull(x) else "€ 0,00")
+                    if 'prezzo_unitario' in df_storico_prod_show.columns:
+                        df_storico_prod_show['prezzo_unitario'] = df_storico_prod_show['prezzo_unitario'].apply(lambda x: f"€ {x:,.2f}" if pd.notnull(x) else "€ 0,00")
                     st.dataframe(df_storico_prod_show, use_container_width=True)
                 else:
                     st.info("Nessuna vendita registrata per questo prodotto nel periodo.")
@@ -237,18 +243,24 @@ elif scelta == "Report & Analisi":
                         
                         st.info(f"💡 Spesa complessiva di **{cliente_selezionato_rep}** nel periodo: **€ {tot_imp_cli:,.2f}** ({int(tot_qta_cli)} pz - Prezzo medio unitario: **€ {prezzo_medio_cli:,.2f}**)")
                         
-                        riga_tot_cli_dett = pd.DataFrame({
-                            'cliente': ['--- TOTALE ---'],
+                        dict_tot_cli = {
+                            'cliente': ['--- TOTALE / MEDIA ---'],
                             'articolo': [''],
                             'quantita': [int(tot_qta_cli)],
                             'totale': [tot_imp_cli],
                             'stato': [''],
                             'tipo': ['']
-                        }, index=[0])
+                        }
+                        if 'prezzo_unitario' in df_storico_cli.columns:
+                            dict_tot_cli['prezzo_unitario'] = [prezzo_medio_cli]
+                            
+                        riga_tot_cli_dett = pd.DataFrame(dict_tot_cli, index=[0])
                         
                         df_storico_cli_full = pd.concat([df_storico_cli, riga_tot_cli_dett], ignore_index=True)
                         df_storico_cli_show = df_storico_cli_full.drop(columns=[col for col in ['id', 'vendita_id', 'data_dt'] if col in df_storico_cli_full.columns])
                         df_storico_cli_show['totale'] = df_storico_cli_show['totale'].apply(lambda x: f"€ {x:,.2f}" if pd.notnull(x) else "€ 0,00")
+                        if 'prezzo_unitario' in df_storico_cli_show.columns:
+                            df_storico_cli_show['prezzo_unitario'] = df_storico_cli_show['prezzo_unitario'].apply(lambda x: f"€ {x:,.2f}" if pd.notnull(x) else "€ 0,00")
                         st.dataframe(df_storico_cli_show, use_container_width=True)
                     else:
                         st.info("Nessun acquisto registrato per questo cliente nel periodo.")
@@ -257,7 +269,7 @@ elif scelta == "Report & Analisi":
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # --- SEZIONE: REPORT CLIENTE - FATTURATO COMPLESSIVO (CON PREZZO MEDIO) ---
+            # --- SEZIONE: REPORT CLIENTE - FATTURATO COMPLESSIVO ---
             st.markdown("### 👥 Report: Cliente – Fatturato e Prezzo Medio")
             df_cli_agg = df_v.groupby('cliente').agg({'totale': 'sum', 'quantita': 'sum'}).reset_index()
             df_cli_agg.columns = ['cliente', 'fatturato_cliente', 'qta_totale_cliente']
@@ -316,7 +328,7 @@ elif scelta == "Report & Analisi":
         with col_c1:
             data_inizio_pn = st.date_input("Data Inizio (Cassa)", datetime(datetime.today().year, 1, 1), key="rep_c_1")
         with col_c2:
-            data_fine_pn = st.date_input("Data Fine (Cassa)", datetime.today(), key="rep_c_2")
+            data_fine_pn = st.date_input("Data Fine (Cassa)", datetime(datetime.today(), key="rep_c_2")
             
         df_pn_all = fetch_table("prima_nota", order_by_date=True)
         if not df_pn_all.empty and 'data' in df_pn_all.columns:
