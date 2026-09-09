@@ -205,24 +205,25 @@ elif scelta == "Report & Analisi":
                     tot_imp_prod = df_storico_prod['totale'].sum()
                     prezzo_medio_prod = tot_imp_prod / tot_qta_prod if tot_qta_prod > 0 else 0.0
                     
-                    dict_tot_prod = {
+                    df_storico_prod['prezzo_unitario_calc'] = df_storico_prod['totale'] / df_storico_prod['quantita']
+                    
+                    riga_tot_prod = pd.DataFrame({
                         'cliente': ['--- TOTALE / MEDIA ---'],
                         'articolo': [''],
                         'quantita': [int(tot_qta_prod)],
                         'totale': [tot_imp_prod],
                         'stato': [''],
-                        'tipo': ['']
-                    }
-                    if 'prezzo_unitario' in df_storico_prod.columns:
-                        dict_tot_prod['prezzo_unitario'] = [prezzo_medio_prod]
-                        
-                    riga_tot_prod = pd.DataFrame(dict_tot_prod, index=[0])
+                        'tipo': [''],
+                        'prezzo_unitario_calc': [prezzo_medio_prod]
+                    }, index=[0])
                     
                     df_storico_prod_full = pd.concat([df_storico_prod, riga_tot_prod], ignore_index=True)
                     df_storico_prod_show = df_storico_prod_full.drop(columns=[col for col in ['id', 'vendita_id', 'data_dt'] if col in df_storico_prod_full.columns])
                     df_storico_prod_show['totale'] = df_storico_prod_show['totale'].apply(lambda x: f"€ {x:,.2f}" if pd.notnull(x) else "€ 0,00")
-                    if 'prezzo_unitario' in df_storico_prod_show.columns:
-                        df_storico_prod_show['prezzo_unitario'] = df_storico_prod_show['prezzo_unitario'].apply(lambda x: f"€ {x:,.2f}" if pd.notnull(x) else "€ 0,00")
+                    df_storico_prod_show['prezzo_unitario_calc'] = df_storico_prod_show['prezzo_unitario_calc'].apply(lambda x: f"€ {x:,.2f}" if pd.notnull(x) else "€ 0,00")
+                    
+                    # Rinominiamo la colonna per chiarezza
+                    df_storico_prod_show = df_storico_prod_show.rename(columns={'prezzo_unitario_calc': 'Prezzo Unitario / Medio'})
                     st.dataframe(df_storico_prod_show, use_container_width=True)
                 else:
                     st.info("Nessuna vendita registrata per questo prodotto nel periodo.")
@@ -241,26 +242,26 @@ elif scelta == "Report & Analisi":
                         tot_imp_cli = df_storico_cli['totale'].sum()
                         prezzo_medio_cli = tot_imp_cli / tot_qta_cli if tot_qta_cli > 0 else 0.0
                         
+                        df_storico_cli['prezzo_unitario_calc'] = df_storico_cli['totale'] / df_storico_cli['quantita']
+                        
                         st.info(f"💡 Spesa complessiva di **{cliente_selezionato_rep}** nel periodo: **€ {tot_imp_cli:,.2f}** ({int(tot_qta_cli)} pz - Prezzo medio unitario: **€ {prezzo_medio_cli:,.2f}**)")
                         
-                        dict_tot_cli = {
+                        riga_tot_cli_dett = pd.DataFrame({
                             'cliente': ['--- TOTALE / MEDIA ---'],
                             'articolo': [''],
                             'quantita': [int(tot_qta_cli)],
                             'totale': [tot_imp_cli],
                             'stato': [''],
-                            'tipo': ['']
-                        }
-                        if 'prezzo_unitario' in df_storico_cli.columns:
-                            dict_tot_cli['prezzo_unitario'] = [prezzo_medio_cli]
-                            
-                        riga_tot_cli_dett = pd.DataFrame(dict_tot_cli, index=[0])
+                            'tipo': [''],
+                            'prezzo_unitario_calc': [prezzo_medio_cli]
+                        }, index=[0])
                         
                         df_storico_cli_full = pd.concat([df_storico_cli, riga_tot_cli_dett], ignore_index=True)
                         df_storico_cli_show = df_storico_cli_full.drop(columns=[col for col in ['id', 'vendita_id', 'data_dt'] if col in df_storico_cli_full.columns])
                         df_storico_cli_show['totale'] = df_storico_cli_show['totale'].apply(lambda x: f"€ {x:,.2f}" if pd.notnull(x) else "€ 0,00")
-                        if 'prezzo_unitario' in df_storico_cli_show.columns:
-                            df_storico_cli_show['prezzo_unitario'] = df_storico_cli_show['prezzo_unitario'].apply(lambda x: f"€ {x:,.2f}" if pd.notnull(x) else "€ 0,00")
+                        df_storico_cli_show['prezzo_unitario_calc'] = df_storico_cli_show['prezzo_unitario_calc'].apply(lambda x: f"€ {x:,.2f}" if pd.notnull(x) else "€ 0,00")
+                        
+                        df_storico_cli_show = df_storico_cli_show.rename(columns={'prezzo_unitario_calc': 'Prezzo Unitario / Medio'})
                         st.dataframe(df_storico_cli_show, use_container_width=True)
                     else:
                         st.info("Nessun acquisto registrato per questo cliente nel periodo.")
@@ -388,7 +389,7 @@ elif scelta == "Report & Analisi":
                 'prezzo_acquisto': [0.0],
                 'prezzo_vendita': [0.0],
                 'giacenza': [int(tot_giacenza_mag)],
-                'Valore d\'Acquisto Totale': [tot_acq],
+                'Valore d'Acquisto Totale': [tot_acq],
                 'Valore di Vendita Potenziale': [tot_vend]
             })
             df_pm_full = pd.concat([df_pm, riga_tot_mag], ignore_index=True)
