@@ -328,7 +328,7 @@ elif scelta == "Report & Analisi":
         with col_c1:
             data_inizio_pn = st.date_input("Data Inizio (Cassa)", datetime(datetime.today().year, 1, 1), key="rep_c_1")
         with col_c2:
-            data_fine_pn = st.date_input("Data Fine (Cassa)", datetime(datetime.today(), key="rep_c_2")
+            data_fine_pn = st.date_input("Data Fine (Cassa)", datetime.today(), key="rep_c_2")
             
         df_pn_all = fetch_table("prima_nota", order_by_date=True)
         if not df_pn_all.empty and 'data' in df_pn_all.columns:
