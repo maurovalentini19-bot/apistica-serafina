@@ -157,7 +157,7 @@ elif scelta == "Report & Analisi":
     st.title("Report & Analisi Statistiche")
     st.markdown("Filtra per intervallo di date, visualizza i totali specifici della selezione.")
     
-    tab_rep_vendite, tab_rep_cassa, tab_rep_mag = st.tabs(["🍯 Vendite per Prodotto", "💶 Analisi Cassa & Spese", "📦 Valore Potenziale Magazzino"])
+    tab_rep_vendite, tab_rep_cassa, tab_rep_mag = st.tabs(["🍯 Vendite per Prodotto & Cliente", "💶 Analisi Cassa & Spese", "📦 Valore Potenziale Magazzino"])
     
     with tab_rep_vendite:
         st.subheader("Riepilogo Quantità e Fatturato per Articolo")
@@ -193,26 +193,39 @@ elif scelta == "Report & Analisi":
             mk2.metric("📦 Quantità Totale Venduta", f"{int(tot_qta_sel)} pz")
             st.markdown("<br>", unsafe_allow_html=True)
 
-            st.markdown("### 👥 Report: Cliente – Fatturato")
-            df_cli_agg = df_v.groupby('cliente').agg({'totale': 'sum', 'quantita': 'sum'}).reset_index()
-            df_cli_agg.columns = ['cliente', 'fatturato_cliente', 'qta_totale_cliente']
-            df_cli_agg = df_cli_agg.sort_values(by='fatturato_cliente', ascending=False)
+            # --- SEZIONE: DETTAGLIO VENDITE PER SINGOLO PRODOTTO ---
+            st.markdown("### 🔍 Dettaglio Vendite per Singolo Prodotto")
+            lista_articoli_rep = df_agg['articolo'].tolist()
+            prodotto_selezionato_rep = st.selectbox("Seleziona un prodotto per vedere l'elenco di tutte le vendite", options=lista_articoli_rep, key="sel_prod_rep_dettaglio")
             
-            if not df_cli_agg.empty:
-                tot_fatt_cli = df_cli_agg['fatturato_cliente'].sum()
-                tot_qta_cli = df_cli_agg['qta_totale_cliente'].sum()
-                
-                riga_tot_cli = pd.DataFrame({
-                    'cliente': ['--- TOTALE COMPLESSIVO ---'],
-                    'fatturato_cliente': [tot_fatt_cli],
-                    'qta_totale_cliente': [int(tot_qta_cli)]
-                })
-                df_cli_rep_full = pd.concat([df_cli_agg, riga_tot_cli], ignore_index=True)
-                df_cli_rep_full['fatturato_cliente_fmt'] = df_cli_rep_full['fatturato_cliente'].apply(lambda x: f"€ {x:,.2f}")
-                
-                df_cli_show = df_cli_rep_full[['cliente', 'qta_totale_cliente', 'fatturato_cliente_fmt']].copy()
-                df_cli_show.columns = ['Cliente', 'Pezzi Acquistati Totali', 'Fatturato']
-                st.dataframe(df_cli_show, use_container_width=True)
+            if prodotto_selezionato_rep:
+                df_storico_prod = df_v[df_v['articolo'] == prodotto_selezionato_rep].copy()
+                if not df_storico_prod.empty:
+                    df_storico_prod_show = df_storico_prod.drop(columns=[col for col in ['id', 'vendita_id', 'data_dt'] if col in df_storico_prod.columns])
+                    df_storico_prod_show['totale'] = df_storico_prod_show['totale'].apply(lambda x: f"€ {x:,.2f}" if pd.notnull(x) else "€ 0,00")
+                    st.dataframe(df_storico_prod_show, use_container_width=True)
+                else:
+                    st.info("Nessuna vendita registrata per questo prodotto nel periodo.")
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # --- SEZIONE: DETTAGLIO ACQUISTI PER SINGOLO CLIENTE ---
+            st.markdown("### 👥 Dettaglio Acquisti per Singolo Cliente")
+            df_clienti_attivi = df_v[df_v['cliente'].notnull()]['cliente'].unique().tolist()
+            if df_clienti_attivi:
+                cliente_selezionato_rep = st.selectbox("Seleziona un cliente per vedere tutto ciò che ha acquistato", options=df_clienti_attivi, key="sel_cli_rep_dettaglio")
+                if cliente_selezionato_rep:
+                    df_storico_cli = df_v[df_v['cliente'] == cliente_selezionato_rep].copy()
+                    if not df_storico_cli.empty:
+                        tot_speso_cli = df_storico_cli['totale'].sum()
+                        st.info(f"💡 Spesa complessiva di **{cliente_selezionato_rep}** nel periodo: **€ {tot_speso_cli:,.2f}**")
+                        df_storico_cli_show = df_storico_cli.drop(columns=[col for col in ['id', 'vendita_id', 'data_dt'] if col in df_storico_cli.columns])
+                        df_storico_cli_show['totale'] = df_storico_cli_show['totale'].apply(lambda x: f"€ {x:,.2f}" if pd.notnull(x) else "€ 0,00")
+                        st.dataframe(df_storico_cli_show, use_container_width=True)
+                    else:
+                        st.info("Nessun acquisto registrato per questo cliente nel periodo.")
+            else:
+                st.info("Nessun cliente registrato nelle vendite del periodo.")
 
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("### 📋 Tabella Riepilogativa per Articolo")
@@ -298,7 +311,7 @@ elif scelta == "Report & Analisi":
             st.dataframe(df_pm_disp, use_container_width=True)
         else:
             st.info("Magazzino vuoto.")
-
+            
 # ==========================================
 # 3. VENDITE
 # ==========================================
