@@ -561,23 +561,35 @@ elif scelta == "Carico Merci (Smielatura)":
                 data_carico = st.date_input("Data Smielatura", datetime.today())
                 prodotto_scelto = st.selectbox("Prodotto da caricare *", options=df_prodotti['descrizione'].tolist())
                 quantita_carico = st.number_input("Quantità prodotta", min_value=1, value=10, step=1)
+                note_carico = st.text_input("Note / Descrizione opzionale", value="Smielatura")
                 
-                registra_spesa = st.checkbox("Registra costo in Prima Nota")
+                registra_spesa = st.checkbox("Registra costo anche in Prima Nota (Cassa)")
                 importo_spesa = st.number_input("Costo sostenuto (€)", min_value=0.0, format="%.2f")
-                descrizione_spesa = st.text_input("Descrizione spesa", value="Costi smielatura")
                 
                 if st.form_submit_button("🍯 Conferma e Carica", use_container_width=True):
+                    # 1. Registra il carico nella tabella dedicata
+                    supabase.table("carichi_merci").insert({
+                        "data": str(data_carico),
+                        "articolo": prodotto_scelto,
+                        "quantita": int(quantita_carico),
+                        "note": note_carico
+                    }).execute()
+                    
+                    # 2. Aggiorna la giacenza del prodotto in magazzino
                     prod_info = df_prodotti[df_prodotti['descrizione'] == prodotto_scelto].iloc[0]
                     prod_id = int(prod_info['id'])
                     giacenza_attuale = int(prod_info['giacenza'])
                     nuova_giacenza = giacenza_attuale + int(quantita_carico)
-                    
                     supabase.table("prodotti").update({"giacenza": nuova_giacenza}).eq("id", prod_id).execute()
                     
+                    # 3. Opzionalmente registra la spesa in prima nota
                     if registra_spesa and importo_spesa > 0:
                         supabase.table("prima_nota").insert({
-                            "data": str(data_carico), "tipo": "Spesa", "categoria": "Smielatura/Produzione",
-                            "descrizione": f"{descrizione_spesa} - {prodotto_scelto} (+{quantita_carico} pz)", "importo": importo_spesa
+                            "data": str(data_carico), 
+                            "tipo": "Spesa", 
+                            "categoria": "Smielatura/Produzione",
+                            "descrizione": f"{note_carico} - {prodotto_scelto} (+{quantita_carico} pz)", 
+                            "importo": importo_spesa
                         }).execute()
                     
                     st.success(f"✅ Carico effettuato! Nuova giacenza: {nuova_giacenza} pz.")
@@ -587,53 +599,88 @@ elif scelta == "Carico Merci (Smielatura)":
 
     with tab_gest_sm:
         st.subheader("✏️ Storico e Gestione Smielature")
-        df_pn_all = fetch_table("prima_nota", order_by_date=True)
+        df_carichi = fetch_table("carichi_merci", order_by_date=True)
         
-        if not df_pn_all.empty and 'categoria' in df_pn_all.columns:
-            df_smielature = df_pn_all[df_pn_all['categoria'] == 'Smielatura/Produzione'].copy()
+        if not df_carichi.empty:
+            df_carichi['etichetta_sm'] = df_carichi.apply(lambda r: f"ID:{r['id']} | Data: {r['data']} | {r['articolo']} (+{r['quantita']} pz)", axis=1)
+            sm_scelta = st.selectbox("Seleziona Smielatura da modificare/eliminare", df_carichi['etichetta_sm'].tolist(), key="sel_sm_mod")
+            r_sm = df_carichi[df_carichi['etichetta_sm'] == sm_scelta].iloc[0]
+            sm_id = int(r_sm['id'])
             
-            if not df_smielature.empty:
-                df_smielature['etichetta_sm'] = df_smielature.apply(lambda r: f"Data: {r['data']} | {r['descrizione']} - € {r['importo']:,.2f}", axis=1)
-                sm_scelta = st.selectbox("Seleziona Smielatura da modificare/eliminare", df_smielature['etichetta_sm'].tolist(), key="sel_sm_mod")
-                r_sm = df_smielature[df_smielature['etichetta_sm'] == sm_scelta].iloc[0]
-                sm_id = int(r_sm['id'])
+            with st.form("form_mod_smielatura"):
+                msm_data = st.date_input("Data Smielatura", datetime.strptime(str(r_sm['data']), "%Y-%m-%d").date())
                 
-                with st.form("form_mod_smielatura"):
-                    msm_data = st.date_input("Data Smielatura", datetime.strptime(str(r_sm['data']), "%Y-%m-%d").date())
+                lista_prod_sm = df_prodotti['descrizione'].tolist() if not df_prodotti.empty else []
+                art_corrente = r_sm['articolo']
+                idx_p_sm = lista_prod_sm.index(art_corrente) if art_corrente in lista_prod_sm else 0
+                
+                msm_prodotto = st.selectbox("Prodotto", options=lista_prod_sm, index=idx_p_sm)
+                msm_quantita = st.number_input("Quantità prodotta", min_value=1, value=int(r_sm['quantita']), step=1)
+                msm_note = st.text_input("Note", value=str(r_sm['note']) if pd.notnull(r_sm['note']) else "")
+                
+                sc1, sc2 = st.columns(2)
+                with sc1:
+                    btn_agg_sm = st.form_submit_button("💾 Salva Modifiche", use_container_width=True)
+                with sc2:
+                    btn_del_sm = st.form_submit_button("🗑️ Elimina Carico", use_container_width=True)
                     
-                    lista_prod_sm = df_prodotti['descrizione'].tolist() if not df_prodotti.empty else []
-                    prodotto_corrente = next((p for p in lista_prod_sm if p in r_sm['descrizione']), lista_prod_sm[0] if lista_prod_sm else "")
-                    idx_p_sm = lista_prod_sm.index(prodotto_corrente) if prodotto_corrente in lista_prod_sm else 0
+                if btn_agg_sm:
+                    vecchia_qta = int(r_sm['quantita'])
+                    vecchio_articolo = r_sm['articolo']
                     
-                    msm_prodotto = st.selectbox("Prodotto", options=lista_prod_sm, index=idx_p_sm)
+                    # Gestione ricalcolo magazzino in base alle modifiche
+                    if vecchio_articolo == msm_prodotto:
+                        differenza = msm_quantita - vecchia_qta
+                        if differenza != 0 and not df_prodotti.empty:
+                            p_info = df_prodotti[df_prodotti['descrizione'] == msm_prodotto].iloc[0]
+                            p_id = int(p_info['id'])
+                            nuova_g = int(p_info['giacenza']) + differenza
+                            supabase.table("prodotti").update({"giacenza": nuova_g}).eq("id", p_id).execute()
+                    else:
+                        # Ripristina il vecchio prodotto togliendo la vecchia quantità
+                        if not df_prodotti.empty:
+                            p_old = df_prodotti[df_prodotti['descrizione'] == vecchio_articolo]
+                            if not p_old.empty:
+                                id_po = int(p_old.iloc[0]['id'])
+                                giac_po = int(p_old.iloc[0]['giacenza']) - vecchia_qta
+                                supabase.table("prodotti").update({"giacenza": max(0, giac_po)}).eq("id", id_po).execute()
+                            
+                            # Aggiungi al nuovo prodotto
+                            p_new = df_prodotti[df_prodotti['descrizione'] == msm_prodotto]
+                            if not p_new.empty:
+                                id_pn = int(p_new.iloc[0]['id'])
+                                giac_pn = int(p_new.iloc[0]['giacenza']) + msm_quantita
+                                supabase.table("prodotti").update({"giacenza": giac_pn}).eq("id", id_pn).execute()
                     
-                    importo_estratto = float(r_sm['importo'])
-                    msm_importo = st.number_input("Costo sostenuto (€)", min_value=0.0, value=importo_estratto, format="%.2f")
-                    msm_desc = st.text_input("Descrizione", value=r_sm['descrizione'])
+                    # Aggiorna il record del carico
+                    supabase.table("carichi_merci").update({
+                        "data": str(msm_data),
+                        "articolo": msm_prodotto,
+                        "quantita": int(msm_quantita),
+                        "note": msm_note
+                    }).eq("id", sm_id).execute()
                     
-                    sc1, sc2 = st.columns(2)
-                    with sc1:
-                        btn_agg_sm = st.form_submit_button("💾 Aggiorna Movimento", use_container_width=True)
-                    with sc2:
-                        btn_del_sm = st.form_submit_button("🗑️ Elimina Movimento", use_container_width=True)
-                        
-                    if btn_agg_sm:
-                        supabase.table("prima_nota").update({
-                            "data": str(msm_data),
-                            "descrizione": msm_desc,
-                            "importo": msm_importo
-                        }).eq("id", sm_id).execute()
-                        st.success("✅ Movimento di smielatura aggiornato con successo!")
-                        st.rerun()
-                        
-                    elif btn_del_sm:
-                        supabase.table("prima_nota").delete().eq("id", sm_id).execute()
-                        st.success("✅ Movimento di smielatura eliminato con successo!")
-                        st.rerun()
-            else:
-                st.info("Nessuna spesa di smielatura registrata in prima nota.")
+                    st.success("✅ Carico aggiornato con successo!")
+                    st.rerun()
+                    
+                elif btn_del_sm:
+                    qta_da_stornare = int(r_sm['quantita'])
+                    art_da_stornare = r_sm['articolo']
+                    
+                    # Storna la giacenza dal magazzino
+                    if not df_prodotti.empty:
+                        p_storno = df_prodotti[df_prodotti['descrizione'] == art_da_stornare]
+                        if not p_storno.empty:
+                            id_st = int(p_storno.iloc[0]['id'])
+                            giac_st = int(p_storno.iloc[0]['giacenza']) - qta_da_stornare
+                            supabase.table("prodotti").update({"giacenza": max(0, giac_st)}).eq("id", id_st).execute()
+                    
+                    # Elimina il carico
+                    supabase.table("carichi_merci").delete().eq("id", sm_id).execute()
+                    st.success("✅ Carico eliminato e magazzino ripristinato!")
+                    st.rerun()
         else:
-            st.info("Nessun movimento di cassa disponibile.")
+            st.info("Nessun carico merci registrato.")
             
 # ==========================================
 # 5. PRIMA NOTA
