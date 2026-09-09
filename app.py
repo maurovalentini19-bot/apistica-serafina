@@ -222,7 +222,6 @@ elif scelta == "Report & Analisi":
                     df_storico_prod_show['totale'] = df_storico_prod_show['totale'].apply(lambda x: f"€ {x:,.2f}" if pd.notnull(x) else "€ 0,00")
                     df_storico_prod_show['prezzo_unitario_calc'] = df_storico_prod_show['prezzo_unitario_calc'].apply(lambda x: f"€ {x:,.2f}" if pd.notnull(x) else "€ 0,00")
                     
-                    # Rinominiamo la colonna per chiarezza
                     df_storico_prod_show = df_storico_prod_show.rename(columns={'prezzo_unitario_calc': 'Prezzo Unitario / Medio'})
                     st.dataframe(df_storico_prod_show, use_container_width=True)
                 else:
@@ -389,8 +388,8 @@ elif scelta == "Report & Analisi":
                 'prezzo_acquisto': [0.0],
                 'prezzo_vendita': [0.0],
                 'giacenza': [int(tot_giacenza_mag)],
-                'Valore d'Acquisto Totale': [tot_acq],
-                'Valore di Vendita Potenziale': [tot_vend]
+                "Valore d'Acquisto Totale": [tot_acq],
+                "Valore di Vendita Potenziale": [tot_vend]
             })
             df_pm_full = pd.concat([df_pm, riga_tot_mag], ignore_index=True)
             
